@@ -24,26 +24,28 @@ private let kUDDidFinishInitialCloudSynchronization = "kUDDidFinishInitialCloudS
   fileprivate struct Observation {
     weak var observer: AnyObject?
     var onErrorCompletionHandler: ((NSError?) -> Void)?
+    var onSynchronizationIsInProcessCompletionHandler: ((Bool) -> Void)?
   }
 
-  private let fileManager: FileManager
-  private let fileType: FileType
-  private(set) var localDirectoryMonitor: LocalDirectoryMonitor
-  private(set) var cloudDirectoryMonitor: CloudDirectoryMonitor
-  private let fileCoordinator = NSFileCoordinator()
+  let fileManager: FileManager
+  private let localDirectoryMonitor: LocalDirectoryMonitor
+  private let cloudDirectoryMonitor: CloudDirectoryMonitor
+  private let settings: Settings.Type
+  private let bookmarksManager: BookmarksManager
   private let synchronizationStateManager: SynchronizationStateManager
-  private let bookmarksManager = BookmarksManager.shared()
+
+  private let fileCoordinator = NSFileCoordinator()
   private let backgroundQueue = DispatchQueue(label: "iCloud.app.organicmaps.backgroundQueue", qos: .background)
   private var backgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
   private var localDirectoryUrl: URL { localDirectoryMonitor.directory }
   private var needsToReloadBookmarksOnTheMap = false
   private var semaphore: DispatchSemaphore?
   private var observers = [ObjectIdentifier: CloudStorageManager.Observation]()
-  private var synchronizationIsInProcess = false
+  private var synchronizationIsInProcess = false {
+    didSet { notifyObserversOnSynchronizationIsInProcess(synchronizationIsInProcess) }
+  }
   private var synchronizationError: SynchronizationError? {
-    didSet {
-      notifyObserversOnSynchronizationError(synchronizationError)
-    }
+    didSet { notifyObserversOnSynchronizationError(synchronizationError) }
   }
 
   static private var isInitialSynchronization: Bool {
@@ -52,15 +54,22 @@ private let kUDDidFinishInitialCloudSynchronization = "kUDDidFinishInitialCloudS
 
   static let shared: CloudStorageManager = {
     let fileManager = FileManager.default
-    return CloudStorageManager(fileManager: fileManager,
-                              fileType: .kml,
-                              cloudContainerIdentifier: iCloudDocumentsDirectoryMonitor.sharedContainerIdentifier,
-                              localDirectory: fileManager.bookmarksDirectoryUrl)
+    let fileType = FileType.kml
+    let cloudDirectoryMonitor = iCloudDocumentsDirectoryMonitor(fileManager: fileManager, fileType: fileType)
+    let localDirectoryMonitor = DefaultLocalDirectoryMonitor(fileManager: fileManager, directory: fileManager.bookmarksDirectoryUrl)
+    let synchronizationStateManager = DefaultSynchronizationStateManager(isInitialSynchronization: CloudStorageManager.isInitialSynchronization)
+    return try! CloudStorageManager(fileManager: fileManager,
+                                    settings: Settings.self,
+                                    bookmarksManager: BookmarksManager.shared(),
+                                    cloudDirectoryMonitor: cloudDirectoryMonitor,
+                                    localDirectoryMonitor: localDirectoryMonitor,
+                                    synchronizationStateManager: synchronizationStateManager)
   }()
 
   // MARK: - Initialization
   init(fileManager: FileManager,
-       fileType: FileType,
+       settings: Settings.Type,
+       bookmarksManager: BookmarksManager,
        cloudDirectoryMonitor: CloudDirectoryMonitor,
        localDirectoryMonitor: LocalDirectoryMonitor,
        synchronizationStateManager: SynchronizationStateManager) throws {
@@ -68,25 +77,15 @@ private let kUDDidFinishInitialCloudSynchronization = "kUDDidFinishInitialCloudS
       throw NSError(domain: "CloudStorageManger", code: 0, userInfo: [NSLocalizedDescriptionKey: "File managers should be the same."])
     }
     self.fileManager = fileManager
-    self.fileType = fileType
+    self.settings = settings
+    self.bookmarksManager = bookmarksManager
     self.cloudDirectoryMonitor = cloudDirectoryMonitor
     self.localDirectoryMonitor = localDirectoryMonitor
     self.synchronizationStateManager = synchronizationStateManager
     super.init()
   }
 
-  init(fileManager: FileManager,
-       fileType: FileType,
-       cloudContainerIdentifier: String,
-       localDirectory: URL) {
-    self.fileManager = fileManager
-    self.fileType = fileType
-    self.cloudDirectoryMonitor = iCloudDocumentsDirectoryMonitor(fileManager: fileManager, cloudContainerIdentifier: cloudContainerIdentifier, fileType: fileType)
-    self.localDirectoryMonitor = DefaultLocalDirectoryMonitor(fileManager: fileManager, directory: localDirectory, fileType: fileType)
-    self.synchronizationStateManager = DefaultSynchronizationStateManager(isInitialSynchronization: CloudStorageManager.isInitialSynchronization)
-    super.init()
-  }
-
+  // MARK: - Public
   @objc func start() {
     subscribeToSettingsNotifications()
     subscribeToApplicationLifecycleNotifications()
@@ -97,41 +96,9 @@ private let kUDDidFinishInitialCloudSynchronization = "kUDDidFinishInitialCloudS
 
 // MARK: - Private
 private extension CloudStorageManager {
-  // MARK: - App Lifecycle
-  func subscribeToApplicationLifecycleNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.didBecomeActiveNotification, object: nil)
-    NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
-  }
-
-  func unsubscribeFromApplicationLifecycleNotifications() {
-    NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
-    NotificationCenter.default.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
-  }
-
-  func subscribeToSettingsNotifications() {
-    NotificationCenter.default.addObserver(self, selector: #selector(didChangeEnabledState), name: NSNotification.iCloudSynchronizationDidChangeEnabledState, object: nil)
-  }
-
-  @objc func appWillEnterForeground() {
-    cancelBackgroundExecutionIfNeeded()
-    startSynchronization()
-  }
-
-  @objc func appDidEnterBackground() {
-    extendBackgroundExecutionIfNeeded { [weak self] in
-      guard let self else { return }
-      self.pauseSynchronization()
-      self.cancelBackgroundExecutionIfNeeded()
-    }
-  }
-
-  @objc func didChangeEnabledState() {
-    Settings.iCLoudSynchronizationEnabled() ? startSynchronization() : stopSynchronization()
-  }
-
   // MARK: - Synchronization Lifecycle
-  private func startSynchronization() {
-    guard Settings.iCLoudSynchronizationEnabled() else { return }
+  func startSynchronization() {
+    guard settings.iCLoudSynchronizationEnabled() else { return }
     guard !cloudDirectoryMonitor.isStarted else {
       if cloudDirectoryMonitor.isPaused {
         resumeSynchronization()
@@ -164,7 +131,6 @@ private extension CloudStorageManager {
     cloudDirectoryMonitor.stop()
     synchronizationError = nil
     synchronizationStateManager.resetState()
-    removeFromBookmarksManagerObserverList()
   }
 
   func pauseSynchronization() {
@@ -177,6 +143,38 @@ private extension CloudStorageManager {
     addToBookmarksManagerObserverList()
     localDirectoryMonitor.resume()
     cloudDirectoryMonitor.resume()
+  }
+
+  // MARK: - App Lifecycle
+  func subscribeToApplicationLifecycleNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.didBecomeActiveNotification, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+  }
+
+  func unsubscribeFromApplicationLifecycleNotifications() {
+    NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+    NotificationCenter.default.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
+  }
+
+  func subscribeToSettingsNotifications() {
+    NotificationCenter.default.addObserver(self, selector: #selector(didChangeEnabledState), name: NSNotification.iCloudSynchronizationDidChangeEnabledState, object: nil)
+  }
+
+  @objc func appWillEnterForeground() {
+    cancelBackgroundExecutionIfNeeded()
+    startSynchronization()
+  }
+
+  @objc func appDidEnterBackground() {
+    extendBackgroundExecutionIfNeeded { [weak self] in
+      guard let self else { return }
+      self.pauseSynchronization()
+      self.cancelBackgroundExecutionIfNeeded()
+    }
+  }
+
+  @objc func didChangeEnabledState() {
+    settings.iCLoudSynchronizationEnabled() ? startSynchronization() : stopSynchronization()
   }
 
   // MARK: - BookmarksManager observing
@@ -230,6 +228,11 @@ extension CloudStorageManager: CloudDirectoryMonitorDelegate {
 private extension CloudStorageManager {
   // MARK: - Handle Events
   func processEvents(_ events: [OutgoingEvent]) {
+    guard !events.isEmpty else {
+      synchronizationError = nil
+      return
+    }
+
     synchronizationIsInProcess = true
 
     events.forEach { [weak self] event in
@@ -240,9 +243,6 @@ private extension CloudStorageManager {
     }
 
     backgroundQueue.async { [self] in
-      if events.isEmpty {
-        synchronizationError = nil
-      }
       synchronizationIsInProcess = false
       reloadBookmarksOnTheMapIfNeeded()
       cancelBackgroundExecutionIfNeeded()
@@ -275,16 +275,15 @@ private extension CloudStorageManager {
   }
 
   func reloadBookmarksOnTheMapIfNeeded() {
-    if needsToReloadBookmarksOnTheMap {
-      needsToReloadBookmarksOnTheMap = false
-      semaphore = DispatchSemaphore(value: 0)
-      DispatchQueue.main.async {
-        // TODO: implement method in the c++ bookmarks manager to reload only updated category
-        self.bookmarksManager.loadBookmarks()
-      }
-      semaphore?.wait()
-      semaphore = nil
+    guard needsToReloadBookmarksOnTheMap else { return }
+    needsToReloadBookmarksOnTheMap = false
+    semaphore = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+      // TODO: implement method in the c++ bookmarks manager to reload only updated category
+      self.bookmarksManager.loadBookmarks()
     }
+    semaphore?.wait()
+    semaphore = nil
   }
 
   // MARK: - Read/Write/Downloading/Uploading
@@ -518,8 +517,15 @@ extension CloudStorageManager {
   func addObserver(_ observer: AnyObject, onErrorCompletionHandler: @escaping (NSError?) -> Void) {
     let id = ObjectIdentifier(observer)
     observers[id] = Observation(observer: observer, onErrorCompletionHandler:onErrorCompletionHandler)
-    // Notify a new observer immediately to handle initial state.
+    // Notify the new observer immediately to handle initial state.
     observers[id]?.onErrorCompletionHandler?(synchronizationError as NSError?)
+  }
+
+  func addObserver(_ observer: AnyObject, onSynchronizationIsInProcessCompletionHandler: @escaping (Bool) -> Void) {
+    let id = ObjectIdentifier(observer)
+    observers[id] = Observation(observer: observer, onSynchronizationIsInProcessCompletionHandler: onSynchronizationIsInProcessCompletionHandler)
+    // Notify the new observer immediately to handle initial state.
+    observers[id]?.onSynchronizationIsInProcessCompletionHandler?(synchronizationIsInProcess)
   }
 
   func removeObserver(_ observer: AnyObject) {
@@ -531,6 +537,14 @@ extension CloudStorageManager {
     self.observers.removeUnreachable().forEach { _, observable in
       DispatchQueue.main.async {
         observable.onErrorCompletionHandler?(error as NSError?)
+      }
+    }
+  }
+
+  private func notifyObserversOnSynchronizationIsInProcess(_ isInProcess: Bool) {
+    self.observers.removeUnreachable().forEach { _, observable in
+      DispatchQueue.main.async {
+        observable.onSynchronizationIsInProcessCompletionHandler?(isInProcess)
       }
     }
   }

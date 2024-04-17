@@ -1,4 +1,4 @@
-protocol DirectoryMonitor {
+protocol DirectoryMonitor: AnyObject {
   var isStarted: Bool { get }
   var isPaused: Bool { get }
 
@@ -30,13 +30,11 @@ final class DefaultLocalDirectoryMonitor: LocalDirectoryMonitor {
     case debounce(dirSource: DispatchSourceFileSystemObject, timer: Timer)
   }
 
-  private let fileManager: FileManager
-  private let fileType: FileType
-  private let resourceKeys: [URLResourceKey] = [.nameKey, .typeIdentifierKey]
+  let fileManager: FileManager
+  private let resourceKeys: [URLResourceKey] = [.nameKey]
   private var source: DispatchSourceFileSystemObject?
   private var state: State = .stopped
   private var didFinishGatheringIsCalled = false
-  private(set) var contents = LocalContents()
 
   // MARK: - Public properties
   let directory: URL
@@ -44,10 +42,9 @@ final class DefaultLocalDirectoryMonitor: LocalDirectoryMonitor {
   private(set) var isPaused: Bool = true
   weak var delegate: Delegate?
 
-  init(fileManager: FileManager, directory: URL, fileType: FileType) {
+  init(fileManager: FileManager, directory: URL) {
     self.fileManager = fileManager
     self.directory = directory
-    self.fileType = fileType
   }
 
   // MARK: - Public methods
@@ -83,7 +80,6 @@ final class DefaultLocalDirectoryMonitor: LocalDirectoryMonitor {
   func stop() {
     pause()
     state = .stopped
-    contents.removeAll()
     didFinishGatheringIsCalled = false
   }
 
@@ -123,24 +119,27 @@ final class DefaultLocalDirectoryMonitor: LocalDirectoryMonitor {
     timer.invalidate()
     state = .started(dirSource: dirSource)
 
-    let newContents = fileManager.contents(of: directory, matching: fileType.typeIdentifier, including: resourceKeys)
-    let newContentMetadataItems = LocalContents(newContents.compactMap { url in
-      do {
-        let metadataItem = try LocalMetadataItem(fileUrl: url)
-        return metadataItem
-      } catch {
-        delegate?.didReceiveLocalMonitorError(error)
-        return nil
-      }
-    })
+    do {
+      let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: resourceKeys, options: [.skipsHiddenFiles])
+      let contentMetadataItems = LocalContents(contents.compactMap { url in
+        do {
+          let metadataItem = try LocalMetadataItem(fileUrl: url)
+          return metadataItem
+        } catch {
+          delegate?.didReceiveLocalMonitorError(error)
+          return nil
+        }
+      })
 
-    if contents.isEmpty && !didFinishGatheringIsCalled {
-      didFinishGatheringIsCalled = true
-      delegate?.didFinishGathering(contents: newContentMetadataItems)
-    } else {
-      delegate?.didUpdate(contents: newContentMetadataItems)
+      if !didFinishGatheringIsCalled {
+        didFinishGatheringIsCalled = true
+        delegate?.didFinishGathering(contents: contentMetadataItems)
+      } else {
+        delegate?.didUpdate(contents: contentMetadataItems)
+      }
+    } catch {
+      fatalError("Error while reading directory: \(error)")
     }
-    contents = newContentMetadataItems
   }
 }
 
@@ -173,21 +172,5 @@ private extension FileManager {
       close(directoryFileDescriptor)
     }
     return dispatchSource
-  }
-
-  // TODO: Implement an errors and exceptions handling
-  func contents(of directory: URL, matching typeIdentifier: String, including: [URLResourceKey]) -> Set<URL> {
-    guard let rawContents = try? contentsOfDirectory(at: directory, includingPropertiesForKeys: including, options: [.skipsHiddenFiles]) else {
-      return []
-    }
-    // Filter the contents to include only those that match the type identifier.
-    // TODO: This filtering should be removed when full directory sync including nested directories will be implemented.
-    let filteredContents = rawContents.filter { url in
-      guard let type = try? url.resourceValues(forKeys: [.typeIdentifierKey]), let urlType = type.typeIdentifier else {
-        return false
-      }
-      return urlType == typeIdentifier
-    }
-    return Set(filteredContents)
   }
 }
