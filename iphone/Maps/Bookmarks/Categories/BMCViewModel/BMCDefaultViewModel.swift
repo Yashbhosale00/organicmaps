@@ -32,7 +32,7 @@ final class BMCDefaultViewModel: NSObject {
   }
 
   private func setActions() {
-    actions = [.create, .exportAll]
+    actions = [.create, .exportAll, .recentlyDeleted]
   }
 
   private func setNotifications() {

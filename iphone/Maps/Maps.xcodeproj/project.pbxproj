@@ -468,6 +468,9 @@
 		ED1263AB2B6F99F900AD99F3 /* UIView+AddSeparator.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1263AA2B6F99F900AD99F3 /* UIView+AddSeparator.swift */; };
 		ED1ADA332BC6B1B40029209F /* CarPlayServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED1ADA322BC6B1B40029209F /* CarPlayServiceTests.swift */; };
 		ED3EAC202B03C88100220A4A /* BottomTabBarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3EAC1F2B03C88100220A4A /* BottomTabBarButton.swift */; };
+		ED79A5B32BD90B1600952D1F /* RecentlyDeletedCategoriesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED79A5B22BD90B1600952D1F /* RecentlyDeletedCategoriesViewController.swift */; };
+		ED79A5B52BD90E6A00952D1F /* RecentlyDeletedCategoriesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED79A5B42BD90E6A00952D1F /* RecentlyDeletedCategoriesViewModel.swift */; };
+		ED79A5B72BD9292B00952D1F /* RecentlyDeletedTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED79A5B62BD9292B00952D1F /* RecentlyDeletedTableViewCell.swift */; };
 		ED9966802B94FBC20083CE55 /* ColorPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED99667D2B94FBC20083CE55 /* ColorPicker.swift */; };
 		EDBD68072B625724005DD151 /* LocationServicesDisabledAlert.xib in Resources */ = {isa = PBXBuildFile; fileRef = EDBD68062B625724005DD151 /* LocationServicesDisabledAlert.xib */; };
 		EDBD680B2B62572E005DD151 /* LocationServicesDisabledAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBD680A2B62572E005DD151 /* LocationServicesDisabledAlert.swift */; };
@@ -1358,6 +1361,9 @@
 		ED3EAC1F2B03C88100220A4A /* BottomTabBarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomTabBarButton.swift; sourceTree = "<group>"; };
 		ED48BBB817C2B1E2003E7E92 /* CircleView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CircleView.h; sourceTree = "<group>"; };
 		ED48BBB917C2B1E2003E7E92 /* CircleView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CircleView.m; sourceTree = "<group>"; };
+		ED79A5B22BD90B1600952D1F /* RecentlyDeletedCategoriesViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentlyDeletedCategoriesViewController.swift; sourceTree = "<group>"; };
+		ED79A5B42BD90E6A00952D1F /* RecentlyDeletedCategoriesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentlyDeletedCategoriesViewModel.swift; sourceTree = "<group>"; };
+		ED79A5B62BD9292B00952D1F /* RecentlyDeletedTableViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentlyDeletedTableViewCell.swift; sourceTree = "<group>"; };
 		ED99667D2B94FBC20083CE55 /* ColorPicker.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ColorPicker.swift; sourceTree = "<group>"; };
 		EDBD68062B625724005DD151 /* LocationServicesDisabledAlert.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = LocationServicesDisabledAlert.xib; sourceTree = "<group>"; };
 		EDBD680A2B62572E005DD151 /* LocationServicesDisabledAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationServicesDisabledAlert.swift; sourceTree = "<group>"; };
@@ -2009,6 +2015,7 @@
 		3404F4A02028A6C00090E401 /* Categories */ = {
 			isa = PBXGroup;
 			children = (
+				ED79A5AF2BD90AD000952D1F /* RecentlyDeleted */,
 				33046837219C605E0041F3A8 /* Category settings */,
 				343D7B6D202AF4CA007D56A8 /* Actions */,
 				3404F48F202898CC0090E401 /* BMCModels.swift */,
@@ -2976,6 +2983,16 @@
 				ED1ADA322BC6B1B40029209F /* CarPlayServiceTests.swift */,
 			);
 			path = Tests;
+			sourceTree = "<group>";
+		};
+		ED79A5AF2BD90AD000952D1F /* RecentlyDeleted */ = {
+			isa = PBXGroup;
+			children = (
+				ED79A5B22BD90B1600952D1F /* RecentlyDeletedCategoriesViewController.swift */,
+				ED79A5B42BD90E6A00952D1F /* RecentlyDeletedCategoriesViewModel.swift */,
+				ED79A5B62BD9292B00952D1F /* RecentlyDeletedTableViewCell.swift */,
+			);
+			path = RecentlyDeleted;
 			sourceTree = "<group>";
 		};
 		ED99667C2B94FBC20083CE55 /* ColorPicker */ = {
@@ -4381,6 +4398,7 @@
 				F6E2FDA41E097BA00083EBEC /* MWMCuisineEditorViewController.mm in Sources */,
 				3454D7CB1E07F045004AF2AD /* UIColor+MapsMeColor.m in Sources */,
 				34B127EA1FBDD410008713D9 /* MWMRouterTransitStepInfo.mm in Sources */,
+				ED79A5B72BD9292B00952D1F /* RecentlyDeletedTableViewCell.swift in Sources */,
 				34D3B02A1E389D05004100F9 /* MWMEditorAdditionalNameTableViewCell.m in Sources */,
 				993DF10523F6BDB100AC231A /* UINavigationItem+styleName.swift in Sources */,
 				9977E69C247BFB510073780C /* SearchTextField.swift in Sources */,
@@ -4394,6 +4412,7 @@
 				4707E4B12372FE860017DF6E /* PlacePageViewController.swift in Sources */,
 				34AB66441FC5AA330078E451 /* RouteManagerViewModelProtocol.swift in Sources */,
 				4701A93D243A917900B87683 /* TouchTransparentView.swift in Sources */,
+				ED79A5B32BD90B1600952D1F /* RecentlyDeletedCategoriesViewController.swift in Sources */,
 				3454D7BF1E07F045004AF2AD /* DateComponentsFormatter+ETA.swift in Sources */,
 				991FCA2423B11E61009AD684 /* BookmarksStyleSheet.swift in Sources */,
 				993DF12823F6BDB100AC231A /* IStyleSheet.swift in Sources */,
@@ -4423,6 +4442,7 @@
 				F6FEA82E1C58F108007223CC /* MWMButton.m in Sources */,
 				34B924431DC8A29C0008D971 /* MWMMailViewController.m in Sources */,
 				340475651E081A4600C92850 /* MWMRouter.mm in Sources */,
+				ED79A5B52BD90E6A00952D1F /* RecentlyDeletedCategoriesViewModel.swift in Sources */,
 				47E3C72F2111F472008B3B27 /* CoverVerticalModalTransitioning.swift in Sources */,
 				34E776101F14B165003040B3 /* VisibleArea.swift in Sources */,
 				995F1613244F0AA50060631D /* BottomMenuLayersCell.swift in Sources */,
