@@ -81,14 +81,11 @@ m2::RectF GlyphPacker::MapTextureCoords(const m2::RectU & pixelRect) const
 
 bool GlyphPacker::IsFull() const { return m_isFull; }
 
-GlyphIndex::GlyphIndex(m2::PointU const & size, ref_ptr<GlyphManager> mng, ref_ptr<GlyphGenerator> generator)
+GlyphIndex::GlyphIndex(m2::PointU const & size, ref_ptr<GlyphManager> mng)
   : m_packer(size)
   , m_mng(mng)
-  , m_generator(generator)
 {
   ASSERT(m_mng != nullptr, ());
-  ASSERT(m_generator != nullptr, ());
-  m_generator->RegisterListener(make_ref(this));
 
   // Cache predefined glyphs.
   bool newResource = false;
@@ -103,29 +100,15 @@ GlyphIndex::GlyphIndex(m2::PointU const & size, ref_ptr<GlyphManager> mng, ref_p
 
 GlyphIndex::~GlyphIndex()
 {
-  m_generator->UnregisterListener(make_ref(this));
-
   std::lock_guard<std::mutex> lock(m_mutex);
   for (auto & node : m_pendingNodes)
     node.second.m_image.Destroy();
   m_pendingNodes.clear();
 }
 
-ref_ptr<Texture::ResourceInfo> GlyphIndex::MapResource(GlyphKey const & key, bool & newResource)
-{
-  GlyphGenerator::GlyphGenerationData data;
-  auto result = MapResource(key, newResource, data);
-  if (result != nullptr && newResource)
-    m_generator->GenerateGlyph(make_ref(this), data.m_rect, data.m_glyph);
-  return result;
-}
-
 std::vector<ref_ptr<Texture::ResourceInfo>> GlyphIndex::MapResources(std::vector<GlyphKey> const & keys,
                                                                      bool & hasNewResources)
 {
-  GlyphGenerator::GlyphGenerationDataArray dataArray;
-  dataArray.reserve(keys.size());
-
   std::vector<ref_ptr<Texture::ResourceInfo>> info;
   info.reserve(keys.size());
 
@@ -133,22 +116,15 @@ std::vector<ref_ptr<Texture::ResourceInfo>> GlyphIndex::MapResources(std::vector
   for (auto const & glyphKey : keys)
   {
     bool newResource = false;
-    GlyphGenerator::GlyphGenerationData data;
-    auto result = MapResource(glyphKey, newResource, data);
+    auto result = MapResource(glyphKey, newResource);
     hasNewResources |= newResource;
-    if (result != nullptr && newResource)
-      dataArray.push_back(std::move(data));
     info.push_back(std::move(result));
   }
-
-  if (!dataArray.empty())
-    m_generator->GenerateGlyphs(make_ref(this), std::move(dataArray));
 
   return info;
 }
 
-ref_ptr<Texture::ResourceInfo> GlyphIndex::MapResource(GlyphKey const & key, bool & newResource,
-                                                       GlyphGenerator::GlyphGenerationData & generationData)
+ref_ptr<Texture::ResourceInfo> GlyphIndex::MapResource(GlyphKey const & key, bool & newResource)
 {
   newResource = false;
   auto it = m_index.find(key);
@@ -179,11 +155,12 @@ ref_ptr<Texture::ResourceInfo> GlyphIndex::MapResource(GlyphKey const & key, boo
 
     return nullptr;
   }
-  generationData.m_glyph = glyph;
-  generationData.m_rect = r;
 
   auto res = m_index.emplace(key, GlyphInfo(m_packer.MapTextureCoords(r), glyph.m_metrics));
   ASSERT(res.second, ());
+
+  m_pendingNodes.emplace_back(r, std::move(glyph));
+
   return make_ref(&res.first->second);
 }
 
@@ -206,18 +183,11 @@ size_t GlyphIndex::GetPendingNodesCount()
   return m_pendingNodes.size();
 }
 
-void GlyphIndex::OnCompleteGlyphGeneration(GlyphGenerator::GlyphGenerationDataArray && glyphs)
-{
-  std::lock_guard<std::mutex> lock(m_mutex);
-  for (auto & g : glyphs)
-    m_pendingNodes.emplace_back(g.m_rect, g.m_glyph);
-}
-
 void GlyphIndex::UploadResources(ref_ptr<dp::GraphicsContext> context, ref_ptr<Texture> texture)
 {
   PendingNodes pendingNodes;
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(m_mutex);
     if (m_pendingNodes.empty())
       return;
     m_pendingNodes.swap(pendingNodes);
